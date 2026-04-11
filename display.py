@@ -4,9 +4,9 @@
 def format_last_result(match):
     """Format the last match result.
 
-    Examples:
-        MTA 2-1 HBS
-        FT  LIG 10/04
+    Example:
+      MTA 2-1 HBS
+      FT  LIG 10/04
     """
     if match is None:
         return ("No results", "")
@@ -29,9 +29,9 @@ def format_last_result(match):
 def format_next_fixture(match):
     """Format the next upcoming fixture.
 
-    Examples:
-        MTA vs HBS
-        12/04 SAT 20:00
+    Example:
+      MTA vs HBS
+      12/04 SAT 20:00
     """
     if match is None:
         return ("No upcoming", "")
@@ -49,12 +49,14 @@ def format_next_fixture(match):
     return (_pad(line1), _pad(line2))
 
 
-def format_live_match(match):
+def format_live_match(match, blink=False):
     """Format a currently live match.
 
-    Examples:
-        MTA 1-0 HBS
-        62' 2H  LIG
+    Alternates between two displays every few seconds:
+
+    Blink ON:            Blink OFF:
+      * MTA 1-0 HBS *     MTA 1-0 HBS
+        62'  LIVE          62'  LIVE
     """
     if match is None:
         return None
@@ -64,14 +66,38 @@ def format_live_match(match):
     hg = match["home_goals"] if match["home_goals"] is not None else 0
     ag = match["away_goals"] if match["away_goals"] is not None else 0
 
-    line1 = f"{home} {hg}-{ag} {away}"
+    score = f"{home} {hg}-{ag} {away}"
+    if blink:
+        line1 = f"*{score}*"
+    else:
+        line1 = score
 
     elapsed = match["elapsed"] or 0
-    status = match["status"]
-    league = match["league"]
-    line2 = f"{elapsed}' {status} {league}"
+    line2 = f"{elapsed}'  LIVE"
 
     return (_pad(line1), _pad(line2))
+
+
+def format_goal_celebration(match):
+    """Goal celebration frames.
+
+    Returns a list of (line1, line2) tuples to display in sequence.
+    """
+    home = match["home"]
+    away = match["away"]
+    hg = match["home_goals"] if match["home_goals"] is not None else 0
+    ag = match["away_goals"] if match["away_goals"] is not None else 0
+    score = f"{home} {hg}-{ag} {away}"
+
+    frames = [
+        ("   GOOOOOL!!!   ", "                "),
+        ("   GOOOOOL!!!   ", _pad(score)),
+        ("  * GOOOOOL! *  ", _pad(score)),
+        ("   GOOOOOL!!!   ", _pad(score)),
+        ("  * GOOOOOL! *  ", _pad(score)),
+        ("   GOOOOOL!!!   ", _pad(score)),
+    ]
+    return frames
 
 
 def _format_status(match):
@@ -80,10 +106,9 @@ def _format_status(match):
         "FT": "FT ",
         "AET": "AET",
         "PEN": "PEN",
+        "PPD": "PPD",
         "NS": "NS ",
         "HT": "HT ",
-        "1H": "1H ",
-        "2H": "2H ",
     }
     return status_map.get(status, status[:3])
 

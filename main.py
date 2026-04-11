@@ -4,19 +4,21 @@
 import time
 import signal
 import sys
+from datetime import datetime
 from RPLCD.gpio import CharLCD
 import RPi.GPIO as GPIO
 
 from config import (
     LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7,
-    LCD_COLS, LCD_ROWS, FETCH_INTERVAL, ROTATE_INTERVAL,
+    LCD_COLS, LCD_ROWS, ROTATE_INTERVAL,
     LCD_CONTRAST_PIN, LCD_CONTRAST,
 )
 from football_api import get_last_result, get_next_fixture
-from display import format_last_result, format_next_fixture, format_live_match
-
-# Live match statuses
-LIVE_STATUSES = {"LIVE"}
+from config import TEAM_ID
+from display import (
+    format_last_result, format_next_fixture, format_live_match,
+    format_goal_celebration,
+)
 
 
 def create_lcd():
@@ -53,8 +55,31 @@ def fetch_data():
     return last, next_fix
 
 
-def is_live(match):
-    return match is not None and match["status"] in LIVE_STATUSES
+def get_fetch_interval(last_result, next_fixture):
+    """Decide how often to call the API based on game proximity.
+
+    - Live game:              every 60 seconds
+    - Game within 30 min:     every 2 minutes
+    - Game today:             every 10 minutes
+    - No game today:          every 1 hour
+    """
+    if last_result and last_result["status"] == "LIVE":
+        return 60
+
+    if next_fixture and next_fixture["status"] == "NS":
+        now = datetime.now()
+        kickoff = next_fixture["date"]
+        seconds_until = (kickoff - now).total_seconds()
+
+        if seconds_until <= 0:
+            # Kickoff passed but not live yet - check frequently
+            return 60
+        elif seconds_until <= 1800:  # 30 minutes
+            return 120
+        elif kickoff.date() == now.date():
+            return 600
+
+    return 3600
 
 
 def setup_contrast():
@@ -74,7 +99,6 @@ def main():
     lcd = create_lcd()
     lcd.clear()
 
-    # Graceful shutdown
     def cleanup(sig, frame):
         lcd.clear()
         write_lines(lcd, "   Goodbye!     ", "                ")
@@ -95,25 +119,39 @@ def main():
     last_result = None
     next_fixture = None
     screen_index = 0
+    blink = False
+    prev_mta_goals = None  # Track Maccabi goals for celebration
 
     while True:
         now = time.time()
+        fetch_interval = get_fetch_interval(last_result, next_fixture)
 
         # Fetch new data if needed
-        if now - last_fetch >= FETCH_INTERVAL:
+        if now - last_fetch >= fetch_interval:
             last_result, next_fixture = fetch_data()
             last_fetch = now
-            print(f"Data refreshed at {time.strftime('%H:%M:%S')}")
+            print(f"[{time.strftime('%H:%M:%S')}] Refreshed (interval: {fetch_interval}s)")
 
-        # If there's a live match, show it with faster refresh
-        if is_live(last_result):
-            lines = format_live_match(last_result)
+        # Live match mode
+        if last_result and last_result["status"] == "LIVE":
+            # Detect Maccabi Tel Aviv goal
+            mta_goals = _get_mta_goals(last_result)
+            if prev_mta_goals is not None and mta_goals > prev_mta_goals:
+                print(f"GOAL!!! Maccabi Tel Aviv! ({mta_goals})")
+                for line1, line2 in format_goal_celebration(last_result):
+                    write_lines(lcd, line1, line2)
+                    time.sleep(0.8)
+            prev_mta_goals = mta_goals
+
+            blink = not blink
+            lines = format_live_match(last_result, blink)
             if lines:
                 write_lines(lcd, lines[0], lines[1])
-            # Refresh more often during live matches
-            time.sleep(60)
-            last_fetch = 0  # Force re-fetch next iteration
+            time.sleep(ROTATE_INTERVAL)
             continue
+
+        blink = False
+        prev_mta_goals = None
 
         # Rotate between last result and next fixture
         screens = []
@@ -131,6 +169,13 @@ def main():
             write_lines(lcd, "  Maccabi T.A.  ", "  No data...    ")
 
         time.sleep(ROTATE_INTERVAL)
+
+
+def _get_mta_goals(match):
+    """Get how many goals Maccabi Tel Aviv scored."""
+    if match["is_maccabi_home"]:
+        return match["home_goals"] or 0
+    return match["away_goals"] or 0
 
 
 if __name__ == "__main__":
