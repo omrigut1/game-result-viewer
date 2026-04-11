@@ -1,0 +1,15 @@
+[Unit]
+Description=Maccabi Tel Aviv LCD Display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/game-result-viewer
+ExecStart=/usr/bin/python3 /home/pi/game-result-viewer/main.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
