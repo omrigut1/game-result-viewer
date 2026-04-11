@@ -72,12 +72,15 @@ def _parse_game(game):
     away_goals = game.get("awayScore")
 
     status = game.get("status")
+    # Status codes: None/0=not started, 2=live, 3=finished, 4=postponed
     if status == 3:
         status_short = "FT"
-    elif status is None or status == 0:
-        status_short = "NS"
-    else:
+    elif status == 2:
         status_short = "LIVE"
+    elif status == 4:
+        status_short = "PPD"
+    else:
+        status_short = "NS"
 
     elapsed = game.get("currentMinute")
 

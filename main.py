@@ -16,7 +16,7 @@ from football_api import get_last_result, get_next_fixture
 from display import format_last_result, format_next_fixture, format_live_match
 
 # Live match statuses
-LIVE_STATUSES = {"1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
+LIVE_STATUSES = {"LIVE"}
 
 
 def create_lcd():
