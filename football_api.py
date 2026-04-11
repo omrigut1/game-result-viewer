@@ -1,77 +1,93 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from config import TEAM_ID
 
-SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3"
+BAMBOO_BASE = "https://cdnapi.bamboo-cloud.com/api/football"
+INSTANCE_ID = "573881b7181f46ae4c8b4567"
+
+# Cache team names so we don't fetch every time
+_team_cache = {}
 
 
 def _get(endpoint):
-    url = f"{SPORTSDB_BASE}/{endpoint}"
+    url = f"{BAMBOO_BASE}/{endpoint}?format=json&iid={INSTANCE_ID}"
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    return resp.json().get("data", {})
+
+
+def _get_team_name(team_id):
+    if not _team_cache:
+        teams = _get("team")
+        for tid, t in teams.items():
+            _team_cache[int(t["id"])] = t.get("name", f"Team {tid}")
+    return _team_cache.get(team_id, f"Team {team_id}")
+
+
+def _get_all_games():
+    """Get all games and filter for our team."""
+    games = _get("game")
+    team_games = []
+    for gid, g in games.items():
+        if g.get("homeTeamId") == TEAM_ID or g.get("awayTeamId") == TEAM_ID:
+            team_games.append(g)
+    return team_games
 
 
 def get_last_result():
     """Get the most recent completed match."""
-    data = _get(f"eventslast.php?id={TEAM_ID}")
-    results = data.get("results") or []
-    if not results:
+    games = _get_all_games()
+    finished = [g for g in games if g.get("status") == 3]
+    if not finished:
         return None
-    # Most recent is first
-    return _parse_event(results[0])
+    finished.sort(key=lambda g: g.get("date", {}).get("sec", 0), reverse=True)
+    return _parse_game(finished[0])
 
 
 def get_next_fixture():
     """Get the next upcoming match."""
-    data = _get(f"eventsnext.php?id={TEAM_ID}")
-    events = data.get("events") or []
-    # Filter to only events that actually include our team
-    our_events = [
-        e for e in events
-        if str(TEAM_ID) in (str(e.get("idHomeTeam", "")), str(e.get("idAwayTeam", "")))
+    games = _get_all_games()
+    now = datetime.now(timezone.utc).timestamp()
+    upcoming = [
+        g for g in games
+        if g.get("status") != 3
+        and g.get("date", {}).get("sec", 0) > now
     ]
-    if not our_events:
+    if not upcoming:
         return None
-    return _parse_event(our_events[0])
+    upcoming.sort(key=lambda g: g.get("date", {}).get("sec", 0))
+    return _parse_game(upcoming[0])
 
 
-def _parse_event(event):
-    date_str = event.get("dateEvent", "")
-    time_str = event.get("strTime") or "00:00:00"
-    try:
-        dt = datetime.fromisoformat(f"{date_str}T{time_str}")
-    except ValueError:
-        dt = datetime.now()
+def _parse_game(game):
+    ts = game.get("date", {}).get("sec", 0)
+    dt = datetime.fromtimestamp(ts)
 
-    home_name = _abbreviate(event.get("strHomeTeam", "???"))
-    away_name = _abbreviate(event.get("strAwayTeam", "???"))
+    home_id = game.get("homeTeamId")
+    away_id = game.get("awayTeamId")
+    home_name = _abbreviate(_get_team_name(home_id))
+    away_name = _abbreviate(_get_team_name(away_id))
 
-    home_goals = event.get("intHomeScore")
-    away_goals = event.get("intAwayScore")
-    # Convert string scores to int or None
-    if home_goals is not None and str(home_goals).strip() != "":
-        home_goals = int(home_goals)
-    else:
-        home_goals = None
-    if away_goals is not None and str(away_goals).strip() != "":
-        away_goals = int(away_goals)
-    else:
-        away_goals = None
+    home_goals = game.get("homeScore")
+    away_goals = game.get("awayScore")
 
-    status = event.get("strStatus") or "NS"
-    if "Finished" in status or "FT" in status:
+    status = game.get("status")
+    if status == 3:
         status_short = "FT"
-    elif "Not Started" in status or status == "NS":
+    elif status is None or status == 0:
         status_short = "NS"
-    elif "Half" in status:
-        status_short = "HT"
     else:
-        status_short = status[:3].upper()
+        status_short = "LIVE"
 
-    is_maccabi_home = str(event.get("idHomeTeam", "")) == str(TEAM_ID)
+    elapsed = game.get("currentMinute")
 
-    league = event.get("strLeague", "")
+    stage = game.get("stage", "")
+    if "Championship" in stage:
+        league = "C/S"
+    elif "Relegation" in stage:
+        league = "R/S"
+    else:
+        league = "LIG"
 
     return {
         "home": home_name,
@@ -80,13 +96,12 @@ def _parse_event(event):
         "away_goals": away_goals,
         "date": dt,
         "status": status_short,
-        "elapsed": None,
-        "league": _abbreviate_league(league),
-        "is_maccabi_home": is_maccabi_home,
+        "elapsed": elapsed,
+        "league": league,
+        "is_maccabi_home": home_id == TEAM_ID,
     }
 
 
-# Common Israeli football team abbreviations
 TEAM_ABBREVS = {
     "Maccabi Tel Aviv": "MTA",
     "Hapoel Tel Aviv": "HTA",
@@ -101,11 +116,14 @@ TEAM_ABBREVS = {
     "Maccabi Bnei Reineh": "MBR",
     "Hapoel Hadera": "HHD",
     "Ironi Kiryat Shmona": "IKS",
-    "Ashdod": "ASH",
+    "SC Ashdod": "ASH",
     "FC Ashdod": "ASH",
+    "Ashdod": "ASH",
     "Bnei Yehuda": "BNY",
     "Maccabi Petah Tikva": "MPT",
+    "Hapoel Petach Tikva": "HPT",
     "Hapoel Nof HaGalil": "HNG",
+    "Ironi Tveria": "TVR",
 }
 
 
@@ -114,20 +132,5 @@ def _abbreviate(name):
     for full, abbr in TEAM_ABBREVS.items():
         if full.lower() in name.lower():
             return abbr
-    # Fallback: first 3 uppercase letters
     letters = [c for c in name if c.isalpha()]
     return "".join(letters[:3]).upper()
-
-
-def _abbreviate_league(name):
-    if "ligat" in name.lower() or "winner" in name.lower() or "premier" in name.lower():
-        return "LIG"
-    if "toto" in name.lower() or "cup" in name.lower():
-        return "CUP"
-    if "champion" in name.lower():
-        return "UCL"
-    if "europa" in name.lower():
-        return "UEL"
-    if "conference" in name.lower():
-        return "ECL"
-    return name[:3].upper()

@@ -1,6 +1,6 @@
 # === Team Configuration ===
-# TheSportsDB team ID (no API key needed)
-TEAM_ID = 134315  # Maccabi Tel Aviv FC
+# football.co.il (Israeli League) team ID
+TEAM_ID = 4536  # Maccabi Tel Aviv FC
 
 # === LCD GPIO Pins (BCM numbering) ===
 LCD_RS = 25
