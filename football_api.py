@@ -1,60 +1,87 @@
 import requests
 from datetime import datetime
-from config import API_KEY, API_BASE_URL, TEAM_ID
+from config import TEAM_ID
+
+SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3"
 
 
-def _headers():
-    return {"x-apisports-key": API_KEY}
-
-
-def _get(endpoint, params=None):
-    url = f"{API_BASE_URL}/{endpoint}"
-    resp = requests.get(url, headers=_headers(), params=params, timeout=10)
+def _get(endpoint):
+    url = f"{SPORTSDB_BASE}/{endpoint}"
+    resp = requests.get(url, timeout=10)
     resp.raise_for_status()
-    data = resp.json()
-    return data.get("response", [])
+    return resp.json()
 
 
 def get_last_result():
     """Get the most recent completed match."""
-    fixtures = _get("fixtures", {"team": TEAM_ID, "last": 1})
-    if not fixtures:
+    data = _get(f"eventslast.php?id={TEAM_ID}")
+    results = data.get("results") or []
+    if not results:
         return None
-    return _parse_fixture(fixtures[0])
+    # Most recent is first
+    return _parse_event(results[0])
 
 
 def get_next_fixture():
     """Get the next upcoming match."""
-    fixtures = _get("fixtures", {"team": TEAM_ID, "next": 1})
-    if not fixtures:
+    data = _get(f"eventsnext.php?id={TEAM_ID}")
+    events = data.get("events") or []
+    # Filter to only events that actually include our team
+    our_events = [
+        e for e in events
+        if str(TEAM_ID) in (str(e.get("idHomeTeam", "")), str(e.get("idAwayTeam", "")))
+    ]
+    if not our_events:
         return None
-    return _parse_fixture(fixtures[0])
+    return _parse_event(our_events[0])
 
 
-def _parse_fixture(fixture):
-    info = fixture["fixture"]
-    teams = fixture["teams"]
-    goals = fixture["goals"]
-    league = fixture["league"]
+def _parse_event(event):
+    date_str = event.get("dateEvent", "")
+    time_str = event.get("strTime") or "00:00:00"
+    try:
+        dt = datetime.fromisoformat(f"{date_str}T{time_str}")
+    except ValueError:
+        dt = datetime.now()
 
-    dt = datetime.fromisoformat(info["date"])
+    home_name = _abbreviate(event.get("strHomeTeam", "???"))
+    away_name = _abbreviate(event.get("strAwayTeam", "???"))
 
-    home_name = _abbreviate(teams["home"]["name"])
-    away_name = _abbreviate(teams["away"]["name"])
+    home_goals = event.get("intHomeScore")
+    away_goals = event.get("intAwayScore")
+    # Convert string scores to int or None
+    if home_goals is not None and str(home_goals).strip() != "":
+        home_goals = int(home_goals)
+    else:
+        home_goals = None
+    if away_goals is not None and str(away_goals).strip() != "":
+        away_goals = int(away_goals)
+    else:
+        away_goals = None
 
-    is_maccabi_home = teams["home"]["id"] == TEAM_ID
+    status = event.get("strStatus") or "NS"
+    if "Finished" in status or "FT" in status:
+        status_short = "FT"
+    elif "Not Started" in status or status == "NS":
+        status_short = "NS"
+    elif "Half" in status:
+        status_short = "HT"
+    else:
+        status_short = status[:3].upper()
 
-    status_short = info["status"]["short"]
+    is_maccabi_home = str(event.get("idHomeTeam", "")) == str(TEAM_ID)
+
+    league = event.get("strLeague", "")
 
     return {
         "home": home_name,
         "away": away_name,
-        "home_goals": goals["home"],
-        "away_goals": goals["away"],
+        "home_goals": home_goals,
+        "away_goals": away_goals,
         "date": dt,
-        "status": status_short,  # FT, NS, 1H, 2H, HT, etc.
-        "elapsed": info["status"]["elapsed"],
-        "league": _abbreviate_league(league["name"]),
+        "status": status_short,
+        "elapsed": None,
+        "league": _abbreviate_league(league),
         "is_maccabi_home": is_maccabi_home,
     }
 
@@ -64,6 +91,7 @@ TEAM_ABBREVS = {
     "Maccabi Tel Aviv": "MTA",
     "Hapoel Tel Aviv": "HTA",
     "Hapoel Beer Sheva": "HBS",
+    "Hapoel Be'er Sheva": "HBS",
     "Maccabi Haifa": "MHF",
     "Beitar Jerusalem": "BJM",
     "Hapoel Haifa": "HHF",
@@ -74,6 +102,7 @@ TEAM_ABBREVS = {
     "Hapoel Hadera": "HHD",
     "Ironi Kiryat Shmona": "IKS",
     "Ashdod": "ASH",
+    "FC Ashdod": "ASH",
     "Bnei Yehuda": "BNY",
     "Maccabi Petah Tikva": "MPT",
     "Hapoel Nof HaGalil": "HNG",

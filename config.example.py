@@ -1,11 +1,6 @@
-# === API Configuration ===
-# Sign up for a free API key at: https://www.api-football.com/
-# Free tier: 100 requests/day (more than enough)
-API_KEY = "YOUR_API_KEY_HERE"
-API_BASE_URL = "https://v3.football.api-sports.io"
-
 # === Team Configuration ===
-TEAM_ID = 4530  # Maccabi Tel Aviv FC in API-Football
+# TheSportsDB team ID (no API key needed)
+TEAM_ID = 134315  # Maccabi Tel Aviv FC
 
 # === LCD GPIO Pins (BCM numbering) ===
 LCD_RS = 25
