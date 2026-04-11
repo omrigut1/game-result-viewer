@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/pi/game-result-viewer
-ExecStart=/usr/bin/python3 /home/pi/game-result-viewer/main.py
+WorkingDirectory=/home/gutman/game-result-viewer
+ExecStart=/home/gutman/game-result-viewer/venv/bin/python3 /home/gutman/game-result-viewer/main.py
 Restart=on-failure
 RestartSec=30
 
