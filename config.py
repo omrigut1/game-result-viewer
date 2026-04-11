@@ -20,7 +20,5 @@ LCD_CONTRAST_PIN = 13
 LCD_CONTRAST = 50
 
 # === Display Settings ===
-# How often to fetch new data from the API (in seconds)
-FETCH_INTERVAL = 3600  # 1 hour
 # How often to rotate between screens (in seconds)
 ROTATE_INTERVAL = 5
