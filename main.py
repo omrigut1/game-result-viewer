@@ -13,7 +13,7 @@ from config import (
     LCD_COLS, LCD_ROWS, ROTATE_INTERVAL,
     LCD_CONTRAST_PIN, LCD_CONTRAST,
 )
-from football_api import get_last_result, get_next_fixture
+from football_api import get_last_result, get_next_fixture, get_live_game
 from config import TEAM_ID
 from display import (
     format_last_result, format_next_fixture, format_live_match,
@@ -41,9 +41,14 @@ def write_lines(lcd, line1, line2):
 
 
 def fetch_data():
-    """Fetch last result and next fixture from API."""
+    """Fetch live game, last result, and next fixture from API."""
+    live = None
     last = None
     next_fix = None
+    try:
+        live = get_live_game()
+    except Exception as e:
+        print(f"Error fetching live game: {e}")
     try:
         last = get_last_result()
     except Exception as e:
@@ -52,10 +57,10 @@ def fetch_data():
         next_fix = get_next_fixture()
     except Exception as e:
         print(f"Error fetching next fixture: {e}")
-    return last, next_fix
+    return live, last, next_fix
 
 
-def get_fetch_interval(last_result, next_fixture):
+def get_fetch_interval(live_game, next_fixture):
     """Decide how often to call the API based on game proximity.
 
     - Live game:              every 60 seconds
@@ -63,7 +68,7 @@ def get_fetch_interval(last_result, next_fixture):
     - Game today:             every 10 minutes
     - No game today:          every 1 hour
     """
-    if last_result and last_result["status"] == "LIVE":
+    if live_game:
         return 60
 
     if next_fixture and next_fixture["status"] == "NS":
@@ -116,6 +121,7 @@ def main():
     write_lines(lcd, "  Maccabi T.A.  ", "  Loading...    ")
 
     last_fetch = 0
+    live_game = None
     last_result = None
     next_fixture = None
     screen_index = 0
@@ -124,27 +130,28 @@ def main():
 
     while True:
         now = time.time()
-        fetch_interval = get_fetch_interval(last_result, next_fixture)
+        fetch_interval = get_fetch_interval(live_game, next_fixture)
 
         # Fetch new data if needed
         if now - last_fetch >= fetch_interval:
-            last_result, next_fixture = fetch_data()
+            live_game, last_result, next_fixture = fetch_data()
             last_fetch = now
-            print(f"[{time.strftime('%H:%M:%S')}] Refreshed (interval: {fetch_interval}s)")
+            print(f"[{time.strftime('%H:%M:%S')}] Refreshed (interval: {fetch_interval}s)"
+                  f" live={'YES' if live_game else 'no'}")
 
         # Live match mode
-        if last_result and last_result["status"] == "LIVE":
+        if live_game:
             # Detect Maccabi Tel Aviv goal
-            mta_goals = _get_mta_goals(last_result)
+            mta_goals = _get_mta_goals(live_game)
             if prev_mta_goals is not None and mta_goals > prev_mta_goals:
                 print(f"GOAL!!! Maccabi Tel Aviv! ({mta_goals})")
-                for line1, line2 in format_goal_celebration(last_result):
+                for line1, line2 in format_goal_celebration(live_game):
                     write_lines(lcd, line1, line2)
                     time.sleep(0.8)
             prev_mta_goals = mta_goals
 
             blink = not blink
-            lines = format_live_match(last_result, blink)
+            lines = format_live_match(live_game, blink)
             if lines:
                 write_lines(lcd, lines[0], lines[1])
             time.sleep(ROTATE_INTERVAL)

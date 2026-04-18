@@ -44,6 +44,15 @@ def get_last_result():
     return _parse_game(finished[0])
 
 
+def get_live_game():
+    """Get a currently live match, if any."""
+    games = _get_all_games()
+    live = [g for g in games if g.get("status") == 2]
+    if not live:
+        return None
+    return _parse_game(live[0])
+
+
 def get_next_fixture():
     """Get the next upcoming match."""
     games = _get_all_games()
