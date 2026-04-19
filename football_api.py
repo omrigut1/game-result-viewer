@@ -24,12 +24,24 @@ def _get_team_name(team_id):
     return _team_cache.get(team_id, f"Team {team_id}")
 
 
+def _extract_team_id(value):
+    """Extract team ID - API sometimes returns int, sometimes a dict."""
+    if isinstance(value, dict):
+        return value.get("id")
+    return value
+
+
 def _get_all_games():
     """Get all games and filter for our team."""
     games = _get("game")
     team_games = []
     for gid, g in games.items():
-        if g.get("homeTeamId") == TEAM_ID or g.get("awayTeamId") == TEAM_ID:
+        home_id = _extract_team_id(g.get("homeTeamId"))
+        away_id = _extract_team_id(g.get("awayTeamId"))
+        if home_id == TEAM_ID or away_id == TEAM_ID:
+            # Normalize IDs to ints for downstream code
+            g["homeTeamId"] = home_id
+            g["awayTeamId"] = away_id
             team_games.append(g)
     return team_games
 
