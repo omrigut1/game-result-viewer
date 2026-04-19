@@ -60,27 +60,33 @@ def fetch_data():
     return live, last, next_fix
 
 
-def get_fetch_interval(live_game, next_fixture):
+def get_fetch_interval(live_game, last_result, next_fixture):
     """Decide how often to call the API based on game proximity.
 
     - Live game:              every 60 seconds
-    - Game within 30 min:     every 2 minutes
+    - Game within 2 hours:    every 60 seconds (catch kickoff)
     - Game today:             every 10 minutes
     - No game today:          every 1 hour
     """
     if live_game:
         return 60
 
+    now = datetime.now()
+
+    # Check if a game recently finished (within 2 hours) - keep checking
+    # in case the API is slow to update status
+    if last_result and last_result["status"] == "FT":
+        game_time = last_result["date"]
+        hours_since = (now - game_time).total_seconds() / 3600
+        if hours_since < 2:
+            return 300  # 5 min
+
     if next_fixture and next_fixture["status"] == "NS":
-        now = datetime.now()
         kickoff = next_fixture["date"]
         seconds_until = (kickoff - now).total_seconds()
 
-        if seconds_until <= 0:
-            # Kickoff passed but not live yet - check frequently
+        if seconds_until <= 7200:  # 2 hours before kickoff
             return 60
-        elif seconds_until <= 1800:  # 30 minutes
-            return 120
         elif kickoff.date() == now.date():
             return 600
 
@@ -130,7 +136,7 @@ def main():
 
     while True:
         now = time.time()
-        fetch_interval = get_fetch_interval(live_game, next_fixture)
+        fetch_interval = get_fetch_interval(live_game, last_result, next_fixture)
 
         # Fetch new data if needed
         if now - last_fetch >= fetch_interval:
