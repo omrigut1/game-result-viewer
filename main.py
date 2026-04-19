@@ -133,6 +133,7 @@ def main():
     screen_index = 0
     blink = False
     prev_mta_goals = None  # Track Maccabi goals for celebration
+    last_live_seen = 0  # Timestamp of last time we saw a live game
 
     while True:
         now = time.time()
@@ -140,8 +141,22 @@ def main():
 
         # Fetch new data if needed
         if now - last_fetch >= fetch_interval:
-            live_game, last_result, next_fixture = fetch_data()
+            new_live, new_last, new_next = fetch_data()
             last_fetch = now
+
+            # If API flickers (was live, now not, but no finished game is newer),
+            # keep the previous live state for up to 5 minutes
+            if live_game and not new_live:
+                if now - last_live_seen < 300:
+                    new_live = live_game  # Keep showing live
+                    print(f"[{time.strftime('%H:%M:%S')}] API flicker - keeping live state")
+
+            if new_live:
+                last_live_seen = now
+
+            live_game = new_live
+            last_result = new_last
+            next_fixture = new_next
             print(f"[{time.strftime('%H:%M:%S')}] Refreshed (interval: {fetch_interval}s)"
                   f" live={'YES' if live_game else 'no'}")
 

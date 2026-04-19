@@ -10,8 +10,8 @@ _team_cache = {}
 
 
 def _get(endpoint):
-    url = f"{BAMBOO_BASE}/{endpoint}?format=json&iid={INSTANCE_ID}"
-    resp = requests.get(url, timeout=10)
+    url = f"{BAMBOO_BASE}/{endpoint}?format=json&iid={INSTANCE_ID}&_t={int(datetime.now().timestamp())}"
+    resp = requests.get(url, timeout=10, headers={"Cache-Control": "no-cache"})
     resp.raise_for_status()
     return resp.json().get("data", {})
 
