@@ -46,10 +46,19 @@ def _get_all_games():
     return team_games
 
 
+def _hours_since_kickoff(game):
+    ts = game.get("date", {}).get("sec", 0)
+    return (datetime.now().timestamp() - ts) / 3600
+
+
 def get_last_result():
     """Get the most recent completed match."""
     games = _get_all_games()
-    finished = [g for g in games if g.get("status") == 3]
+    finished = [
+        g for g in games
+        if g.get("status") == 3
+        or (g.get("status") == 2 and _hours_since_kickoff(g) >= 3)
+    ]
     if not finished:
         return None
     finished.sort(key=lambda g: g.get("date", {}).get("sec", 0), reverse=True)
@@ -59,7 +68,10 @@ def get_last_result():
 def get_live_game():
     """Get a currently live match, if any."""
     games = _get_all_games()
-    live = [g for g in games if g.get("status") == 2]
+    live = [
+        g for g in games
+        if g.get("status") == 2 and _hours_since_kickoff(g) < 3
+    ]
     if not live:
         return None
     return _parse_game(live[0])

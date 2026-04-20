@@ -144,15 +144,12 @@ def main():
             new_live, new_last, new_next = fetch_data()
             last_fetch = now
 
-            # If API flickers (was live, now not, but no finished game is newer),
-            # keep the previous live state for up to 5 minutes
-            if live_game and not new_live:
-                if now - last_live_seen < 300:
-                    new_live = live_game  # Keep showing live
-                    print(f"[{time.strftime('%H:%M:%S')}] API flicker - keeping live state")
-
             if new_live:
                 last_live_seen = now
+            elif live_game and now - last_live_seen < 300:
+                # API flicker - was live, briefly disappeared, keep showing
+                new_live = live_game
+                print(f"[{time.strftime('%H:%M:%S')}] API flicker - keeping live state")
 
             live_game = new_live
             last_result = new_last
